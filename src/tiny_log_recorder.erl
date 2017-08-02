@@ -18,7 +18,7 @@
 -type recorder_ref() :: atom() | pid().
 -type rotate() :: day | hour. %% rotation period
 -type writer() :: atom(). %% MODULE
--type formatter() :: {atom(), atom(), list()} | atom() | function(). %% MFA | MODULE | Function
+-type formatter() :: atom() | function(). %% MFA | MODULE | Function
 -type tiny_log_opt() :: {formatter, formatter()} | {writer, writer()} | {rotate, rotate()} | {protection, integer()} |{writer_args, any()}.
 
 -record(state, {
@@ -148,7 +148,12 @@ handle_log(Log, State) ->
     true ->
       ok
   end,
-  FormattedLog = Formatter:format(Log),
+  FormattedLog = case is_atom(Formatter) of
+                  true ->
+                    Formatter:format(Log);
+                  false ->
+                    Formatter(Log)
+                 end,
   NewWriterState = Writer:write(FormattedLog, WriterState),
   State#state{ writer_state = NewWriterState }.
 
