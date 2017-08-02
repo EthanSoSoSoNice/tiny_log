@@ -1,0 +1,12 @@
+{application, tiny_log,
+ [
+  {description, ""},
+  {vsn, "1"},
+  {registered, []},
+  {applications, [
+                  kernel,
+                  stdlib
+                 ]},
+  {mod, { tiny_log_app, []}},
+  {env, []}
+ ]}.
