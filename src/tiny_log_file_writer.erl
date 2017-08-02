@@ -29,6 +29,7 @@
 start(Rotate, Opts) ->
   RootPath = proplists:get_value(root, Opts, "./"),
   Prefix = proplists:get_value(file_prefix, Opts, "tiny.log"),
+  filelib:ensure_dir(RootPath),
   FileName = filename(Rotate, Prefix),
   FilePath = filename:join(RootPath, FileName),
   {ok, IoHandle} = file:open(FilePath, [append]),
