@@ -80,7 +80,7 @@ write_log(RecorderRef, LogBin) ->
 %%% GenServer Callback
 %%%=========================================================
 init(Opts) ->
-  Formatter = proplists:get_value(formatter, Opts, ?DEFAULT_FORMATTER),
+  Formatter = proplists:get_value(formatter, Opts, undefined),
   Writer  = proplists:get_value(writer, Opts, ?DEFAULT_WRITER),
   WriterArgs = proplists:get_value(writer_args, Opts, []),
   Rotate = proplists:get_value(rotate, Opts, ?DEFAULT_ROTATE),
@@ -148,10 +148,12 @@ handle_log(Log, State) ->
     true ->
       ok
   end,
-  FormattedLog = case is_atom(Formatter) of
-                  true ->
+  FormattedLog = case Formatter of
+                  undefined ->
+                    Log#log_message.content;
+                  _ when is_atom(Formatter) ->
                     Formatter:format(Log);
-                  false ->
+                  _ ->
                     Formatter(Log)
                  end,
   NewWriterState = Writer:write(FormattedLog, WriterState),
