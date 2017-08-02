@@ -108,7 +108,6 @@ handle_cast(_Msg, State) ->
   {noreply, State}.
 
 handle_info({timeout, _, rotate}, State) ->
-  error_logger:error_msg("Timeout ~n"),
   #state{
     writer = Writer,
     writer_state = WriterState,
