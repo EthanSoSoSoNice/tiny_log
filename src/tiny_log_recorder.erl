@@ -90,7 +90,7 @@ write_log(RecorderRef, Content) ->
 init(Opts) ->
   process_flag(trap_exit, true),
   Formatter = proplists:get_value(formatter, Opts, undefined),
-  tiny_log_config:set_config(self(), Formatter),
+  tiny_log_config:set_config(self(), formatter, Formatter),
   Writer  = proplists:get_value(writer, Opts, ?DEFAULT_WRITER),
   WriterArgs = proplists:get_value(writer_args, Opts, []),
   Rotate = proplists:get_value(rotate, Opts, ?DEFAULT_ROTATE),
