@@ -13,7 +13,8 @@
 -record(state, {
   io_handle,
   root,
-  prefix
+  prefix,
+  suffix
 }).
 %% API
 -export([
@@ -23,20 +24,22 @@
   rotate/2
 ]).
 
--type file_writer_opt() :: {rotate, tiny_log_recorder:rotate()} | {file_prefix, string()}  | {root, string()}.
+-type file_writer_opt() :: {rotate, tiny_log_recorder:rotate()} | {file_prefix, string()}  | {root, string()} | {file_suffix, string()}.
 
 -spec start(tiny_log_recorder:roate(), [file_writer_opt()]) -> #state{}.
 start(Rotate, Opts) ->
   RootPath = proplists:get_value(root, Opts, "./"),
-  Prefix = proplists:get_value(file_prefix, Opts, "tiny.log"),
-  FileName = filename(Rotate, Prefix),
+  Prefix = proplists:get_value(file_prefix, Opts, ""),
+  Suffix = proplists:get_value(file_suffix, Opts, ""),
+  FileName = filename(Rotate, Prefix, Suffix),
   FilePath = filename:join(RootPath, FileName),
   filelib:ensure_dir(FilePath),
   {ok, IoHandle} = file:open(FilePath, [append]),
   #state{
     io_handle = IoHandle,
     root = RootPath,
-    prefix = Prefix
+    prefix = Prefix,
+    suffix = Suffix
   }.
 
 
@@ -58,22 +61,23 @@ rotate(Rotate, State) ->
   #state{
     io_handle = IoHandle,
     prefix = Prefix,
-    root = Root
+    root = Root,
+    suffix = Suffix
   } = State,
   ok = file:close(IoHandle),
-  NewFileName = filename(Rotate, Prefix),
+  NewFileName = filename(Rotate, Prefix, Suffix),
   FilePath = filename:join(Root, NewFileName),
   {ok, NewIOHandle} = file:open(FilePath, [append]),
   State#state{
     io_handle = NewIOHandle
   }.
 
-filename(day, Prefix) ->
+filename(day, Prefix, Suffix) ->
   {{YY, MM, DD}, _} = calendar:local_time(),
-  lists:concat([Prefix, conv(YY), conv(MM), conv(DD)]);
-filename(hour, Prefix) ->
+  lists:concat([Prefix, conv(YY), conv(MM), conv(DD), Suffix]);
+filename(hour, Prefix, Suffix) ->
   {{YY, MM, DD}, {HH, _, _}} = calendar:local_time(),
-  lists:concat([Prefix, conv(YY), conv(MM), conv(DD), conv(HH)]).
+  lists:concat([Prefix, conv(YY), conv(MM), conv(DD), conv(HH), Suffix]).
 
 conv(N) when N < 10 ->
   [$0, $0 + N];

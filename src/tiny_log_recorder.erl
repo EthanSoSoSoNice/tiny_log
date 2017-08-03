@@ -22,7 +22,6 @@
 -type tiny_log_opt() :: {formatter, formatter()} | {writer, writer()} | {rotate, rotate()} | {protection, integer()} |{writer_args, any()}.
 
 -record(state, {
-  formatter,
   writer,
   writer_state,
   protection,
@@ -64,14 +63,23 @@ start_link(Name) when is_atom(Name) ->
 start_link(Name, Opts) ->
   gen_server:start_link({local, Name}, ?MODULE, Opts, []).
 
--spec write_log(recorder_ref(), binary()) -> ok.
-write_log(RecorderRef, LogBin) ->
-  LogMessage = #log_message{ ts = tiny_log_util:timestamp(), content = LogBin },
+-spec write_log(recorder_ref(), any()) -> ok.
+write_log(RecorderRef, Content) ->
+  LogMessage = #log_message{ ts = tiny_log_util:timestamp(), content = Content },
+  Formatter = tiny_log_config:get_config(RecorderRef, formatter, undefined),
+  FormattedLog = case Formatter of
+                  undefined ->
+                    Content;
+                  _ when is_atom(Formatter) ->
+                    Formatter:format(LogMessage);
+                  _ ->
+                    Formatter(LogMessage)
+                 end,
   case tiny_log_config:get_config(RecorderRef, is_async, false) of
     false ->
-      gen_server:cast(RecorderRef, {log, LogMessage});
+      gen_server:cast(RecorderRef, {log, FormattedLog});
     true ->
-      gen_server:call(RecorderRef, {log, LogMessage})
+      gen_server:call(RecorderRef, {log, FormattedLog})
   end.
 
 
@@ -80,7 +88,9 @@ write_log(RecorderRef, LogBin) ->
 %%% GenServer Callback
 %%%=========================================================
 init(Opts) ->
+  process_flag(trap_exit, true),
   Formatter = proplists:get_value(formatter, Opts, undefined),
+  tiny_log_config:set_config(self(), Formatter),
   Writer  = proplists:get_value(writer, Opts, ?DEFAULT_WRITER),
   WriterArgs = proplists:get_value(writer_args, Opts, []),
   Rotate = proplists:get_value(rotate, Opts, ?DEFAULT_ROTATE),
@@ -88,7 +98,6 @@ init(Opts) ->
   Protection = proplists:get_value(protection, Opts, ?DEFAULT_PROTECTION),
   start_rotate(Rotate),
   {ok, #state{
-    formatter = Formatter,
     writer = Writer,
     writer_state = WriterState,
     protection = Protection,
@@ -120,7 +129,9 @@ handle_info({timeout, _, rotate}, State) ->
 handle_info(_Msg, State) ->
   {noreply, State}.
 
-terminate(_Reason, _State) ->
+terminate(_Reason, State) ->
+  #state{ writer = Writer, writer_state = WriterState } = State,
+  Writer:stop(WriterState),
   ok.
 
 code_change(_Old, State, _Extra) ->
@@ -134,7 +145,6 @@ handle_log(Log, State) ->
   {message_queue_len, Len} = erlang:process_info(self(), message_queue_len),
   #state{
     protection = Protection,
-    formatter = Formatter,
     writer = Writer,
     writer_state = WriterState
     } = State,
@@ -147,15 +157,7 @@ handle_log(Log, State) ->
     true ->
       ok
   end,
-  FormattedLog = case Formatter of
-                  undefined ->
-                    Log#log_message.content;
-                  _ when is_atom(Formatter) ->
-                    Formatter:format(Log);
-                  _ ->
-                    Formatter(Log)
-                 end,
-  NewWriterState = Writer:write(FormattedLog, WriterState),
+  NewWriterState = Writer:write(Log, WriterState),
   State#state{ writer_state = NewWriterState }.
 
 start_rotate(day) ->
