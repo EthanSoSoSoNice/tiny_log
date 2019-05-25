@@ -12,6 +12,7 @@
 -define(DEFAULT_FORMATTER, tiny_log_default_formatter).
 -define(DEFAULT_WRITER, tiny_log_file_writer).
 -define(DEFAULT_PROTECTION, 300).
+-define(DEFAULT_COUNT, 0).
 -define(DEFAULT_ROTATE, day).
 -include("tiny_log.hrl").
 
@@ -19,13 +20,16 @@
 -type rotate() :: day | hour. %% rotation period
 -type writer() :: atom(). %% MODULE
 -type formatter() :: atom() | function(). %% MFA | MODULE | Function
--type tiny_log_opt() :: {formatter, formatter()} | {writer, writer()} | {rotate, rotate()} | {protection, integer()} |{writer_args, any()}.
+-type tiny_log_opt() :: {formatter, formatter()} | {writer, writer()} | {rotate, rotate()} | {protection, integer()} |{writer_args, any()} | {count, 0}.
 
 -record(state, {
   writer,
   writer_state,
   protection,
-  rotate
+  rotate,
+  count,
+  cache_len,
+  cache
 }).
 
 %% API
@@ -44,6 +48,12 @@
   handle_info/2,
   code_change/3,
   terminate/2
+]).
+
+
+%% Test
+-export([
+  test/0
 ]).
 
 
@@ -96,12 +106,16 @@ init(Opts) ->
   Rotate = proplists:get_value(rotate, Opts, ?DEFAULT_ROTATE),
   WriterState = Writer:start(Rotate, WriterArgs),
   Protection = proplists:get_value(protection, Opts, ?DEFAULT_PROTECTION),
+  Count = proplists:get_value(count, Opts, ?DEFAULT_COUNT),
   start_rotate(Rotate),
   {ok, #state{
     writer = Writer,
     writer_state = WriterState,
     protection = Protection,
-    rotate = Rotate
+    rotate = Rotate,
+    count = Count,
+    cache_len = 0,
+    cache = []
   }}.
 
 handle_call({log, Log}, _From, State) ->
@@ -119,12 +133,13 @@ handle_cast(_Msg, State) ->
 handle_info({timeout, _, rotate}, State) ->
   #state{
     writer = Writer,
-    writer_state = WriterState,
     rotate = Rotate
   } = State,
+  State1 = write_cache(State),
+  WriterState = State1#state.writer_state,
   NewWriterState = Writer:rotate(Rotate, WriterState),
   start_rotate(Rotate),
-  NewState = State#state{ writer_state = NewWriterState },
+  NewState = State1#state{ writer_state = NewWriterState },
   {noreply, NewState};
 handle_info(_Msg, State) ->
   {noreply, State}.
@@ -145,8 +160,8 @@ handle_log(Log, State) ->
   {message_queue_len, Len} = erlang:process_info(self(), message_queue_len),
   #state{
     protection = Protection,
-    writer = Writer,
-    writer_state = WriterState
+    count = Count,
+    cache_len = CacheLen
     } = State,
   IsAsync = tiny_log_config:get_config(self(), is_async, false),
   if
@@ -157,7 +172,41 @@ handle_log(Log, State) ->
     true ->
       ok
   end,
-  NewWriterState = Writer:write(Log, WriterState),
+  case Count of
+    0 -> %% no cache
+      write(Log, State);
+    _ ->
+      NewCacheLen = CacheLen + 1,
+      Cache = State#state.cache,
+      NewCache = [Log|Cache],
+      State1 = State#state{
+        cache = NewCache,
+        cache_len = NewCacheLen
+      },
+      if
+        Count =:= NewCacheLen ->
+          write_cache(State1);
+        true ->
+          State1
+      end
+  end.
+
+write_cache(#state{ cache = [] } = State) ->
+  State;
+write_cache(State) ->
+  Cache = State#state.cache,
+  State1 = lists:foldl(
+    fun(Log, StateTemp) ->
+      write(Log, StateTemp)
+    end,
+    State,
+    lists:reverse(Cache)
+  ),
+  State1#state{ cache = [], cache_len = 0 }.
+
+write(Log, State) ->
+  Writer = State#state.writer,
+  NewWriterState = Writer:write(Log, State#state.writer_state),
   State#state{ writer_state = NewWriterState }.
 
 start_rotate(day) ->
@@ -170,3 +219,13 @@ start_rotate(hour) ->
   {Date, {H, _S, _M}} = tiny_log_util:timestamp_to_datetime(TS + 60 * 60),
   RotateTS = tiny_log_util:datetime_to_timestamp({Date, {H, 0, 0}}) - TS,
   erlang:start_timer(RotateTS * 1000, self(), rotate).
+
+
+test() ->
+  Opts = [
+    {count, 10}
+  ],
+  {ok, _Pid} = start_link(recorder_test, Opts),
+  [
+    write_log(recorder_test, integer_to_binary(I)) || I <- lists:seq(1, 9)
+  ].
