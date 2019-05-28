@@ -221,11 +221,24 @@ start_rotate(hour) ->
   erlang:start_timer(RotateTS * 1000, self(), rotate).
 
 
+%%%==========================================================
+%%% Test Function
+%%%==========================================================
 test() ->
   Opts = [
-    {count, 10}
+    {count, 10},
+    {writer, tiny_log_port_writer},
+    {writer_args, [
+      {port_command, {spawn, "python ../test.py"}}, 
+      {port_settings, [{packet, 4}]
+    }]}
   ],
   {ok, _Pid} = start_link(recorder_test, Opts),
-  [
-    write_log(recorder_test, integer_to_binary(I)) || I <- lists:seq(1, 9)
-  ].
+  lists:foreach(
+    fun(I) ->
+      tiny_log_recorder:write_log(recorder_test, <<"{\"id\":", (integer_to_binary(I))/binary, "}">>)
+    end,
+    lists:seq(1, 9)
+  ),
+  timer:sleep(5000),
+  tiny_log_recorder:write_log(recorder_test, <<"{\"id\": 10}">>).
