@@ -80,7 +80,9 @@ start_port_proc(PortCommand, PortSettings) ->
 
 port_init(PortCommand, PortSettings) ->
   process_flag(trap_exit, true),
-  Port = erlang:open_port(PortCommand, [binary|PortSettings]),
+  put(port_command, PortCommand),
+  put(port_settings, [binary|PortSettings]),
+  Port = open_port(),
   port_loop(Port).
 
 port_loop(Port) ->
@@ -93,8 +95,10 @@ port_loop(Port) ->
       ok;
 
     {'EXIT', Port, Reason} ->
-      error_logger:error_msg("port:~p exit reason:~p~n", [Port, Reason]),
-      exit(port_terminate);
+      error_logger:error_msg("port down:~p, reason:~p~n", [Port, Reason]),
+      NewPort = open_port(),
+      error_logger:error_msg("new port:~p~n", [NewPort]),
+      port_loop(NewPort);
 
     {Port, {data, Data}} ->
       error_logger:error_msg("data:~p~n", [Data]);
@@ -108,6 +112,11 @@ close_port(Port) ->
   Port ! {self(), close}.
 
 
+
+open_port() ->
+  PortCommand = get(port_command),
+  PortSettings = get(port_settings),
+  open_port(PortCommand, PortSettings).
 %%%==============================================
 %%% Test Function
 %%%==============================================
