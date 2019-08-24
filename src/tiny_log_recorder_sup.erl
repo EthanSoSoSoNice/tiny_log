@@ -38,6 +38,6 @@ start_recorder(Name, Args) ->
 %% ===================================================================
 
 init([]) ->
-    ChildSpec = {tiny_log_recorder, {tiny_log_recorder, start_link, []}, temporary, 5, worker, [tiny_log_recorder]},
+    ChildSpec = {tiny_log_recorder, {tiny_log_recorder, start_link, []}, permanent, 5, worker, [tiny_log_recorder]},
     {ok, { {simple_one_for_one, 0, 1}, [ChildSpec]} }.
 
